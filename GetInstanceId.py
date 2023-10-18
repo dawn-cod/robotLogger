@@ -2,6 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 import time
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
+import re
 
 starttime = time.time()
 
@@ -14,7 +16,7 @@ driver.get("https://dev.iwhalecloud.com/portal/main.html?portalId=3")
 
 print(f"[TIME INSPECT] startup uses {time.time()-starttime} seconds")
 
-driver.implicitly_wait(2)
+driver.implicitly_wait(10)
 
 print(f"[TIME INSPECT] findele starts at {time.time()-starttime} seconds")
 name_ele = driver.find_element(By.XPATH, "//input[@name='username' and @placeholder='工号']")
@@ -29,10 +31,39 @@ print(f"[TIME INSPECT] findele starts at {time.time()-starttime} seconds")
 password_ele = driver.find_element(by=By.NAME, value="edt_pwd")
 print(f"[TIME INSPECT] findele ends at {time.time()-starttime} seconds")
 password_ele.send_keys("WZH11235813hAOJ!")
-
 login_ele = driver.find_element(by=By.CLASS_NAME, value="loginBtn")
 login_ele.click()
+################################登录完成################################
+time.sleep(4)
+menu_ele = driver.find_element(by=By.XPATH, value="//span[@class='iconfont icon-menu-list portal__nav_icon js-menu']")
+menu_ele.click()
+
+driver.find_element(by=By.ID, value="searchMenuInput").send_keys('我的研发空间')
+time.sleep(1)
+specific_menu_ele = driver.find_element(by=By.XPATH, value="//dd//*[@menuname='我的研发空间']")
+ActionChains(driver).double_click(specific_menu_ele).perform()
+time.sleep(1)
+#############################进入我的研发空间#############################
+
+project_ele = driver.find_element(by=By.XPATH, value="//td[@title='TM_CD_AutoTest']")
+ActionChains(driver).double_click(project_ele).perform()
+time.sleep(1)
+project_ele = driver.find_element(by=By.XPATH, value="//td[@title='TM_CD_AllCases_TMPass']")
+ActionChains(driver).double_click(project_ele).perform()
+time.sleep(1)
+###############################进入具体项目###############################
+instance_id = []
+triangles_eles = driver.find_elements(by=By.XPATH,value="//div[contains(@class,'treeclick')]")
+for triangle_ele in triangles_eles:
+    triangle_ele.click()
+    time.sleep(1)
+    tr_eles = driver.find_elements(by=By.XPATH, value="//div[@class='ui-tabs-panel' and @menuid]//tr[@id and not(contains(@style, 'display: none;'))][descendant::button[contains(text(), '实例详情')]]")
+    print(len(tr_eles))
+    for tr_ele in tr_eles:
+        current_instance_id = re.search("\d{7}", tr_ele.get_attribute('id')).group()
+        print(f"current_instance_id is {current_instance_id}")
+        instance_id.append(current_instance_id)
+    triangle_ele.click()
 
 
 
-# driver.quit()
