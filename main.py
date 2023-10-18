@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import GetInstanceId
 import csv
+import matplotlib.pyplot as plt
+import numpy as np
 
 def get_instance_id(start_date, end_date=None):
     starttime = time.time()
@@ -90,7 +92,12 @@ def get_outputxml(instance_id):
 def query_method_time(method:str, instance_id:str) -> list:
     xmltext = get_outputxml(instance_id)
     # print(xmltext)
-    root = ET.fromstring(xmltext)
+    try:
+        root = ET.fromstring(xmltext)
+    except Exception as e:
+        print(f"xmltext is\n{xmltext}")
+        return None
+        # raise e
     allele = root.findall(f".//kw[@name='{method}']")
     for ele in allele:
         eles = ele.findall(f"msg[@timestamp]")
@@ -101,8 +108,17 @@ def query_method_time(method:str, instance_id:str) -> list:
         return duration
         # 上面这个拿到的时间还是个str，还得转成date再减
 
-def visualize_method_duration(method_times):
-    pass
+def visualize_method_duration(method_times, method_name=None):
+    transferred_data = []
+    for raw_dict in method_times:
+        brief_create_date = int(datetime.strftime(raw_dict['create_date'],'%y%m%d'))
+        method_time = raw_dict['method_time'].total_seconds()
+        print(f"brief_create_date is  {brief_create_date}")
+        print(f"raw_dict[method_time] is  {method_time}")
+        transferred_data.append({'method_time':method_time, 'create_date':brief_create_date})
+    ready = [[x['method_time'] for x in transferred_data], [x['create_date'] for x in transferred_data]]
+    plt.scatter(ready[0], ready[1])
+    plt.show()  
 
 def save_to_csv(method_name, method_times):
     with open(f'[Time Inspect] {method_name}.csv', 'w', newline='') as csvfile:
@@ -114,12 +130,16 @@ def save_to_csv(method_name, method_times):
 
 if __name__ == '__main__':
     method_name = 'Enter Specific Menu'
-    instance_ids = get_instance_id(datetime.strptime('2023-10-11 12:00:00','%Y-%m-%d %H:%M:%S'))
+    # 其实只会保留最近两个星期的记录
+    instance_ids = get_instance_id(datetime.strptime('2023-10-05 00:00:00','%Y-%m-%d %H:%M:%S'))
     method_times = []
     for instance_id in instance_ids:
         method_time = query_method_time(method_name, instance_id['current_instance_id'])
+        if method_time is None:
+            continue
         method_times.append({'method_time':method_time, 'create_date':instance_id['create_date']})
-    print(method_times)
+    # print(method_times)
     save_to_csv(method_name, method_times)
+    visualize_method_duration(method_times, method_name)
     
 
