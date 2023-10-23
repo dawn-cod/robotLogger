@@ -1,0 +1,3 @@
+/xmlfiles/
+*.csv
+__pycache__/
