@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 import time
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
+import os
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -13,83 +14,44 @@ import csv
 import matplotlib.pyplot as plt
 import numpy as np
 
-def get_instance_id(start_date, end_date=None):
-    starttime = time.time()
-
-    options = Options()
-    options.page_load_strategy = 'eager'
-    driver = webdriver.Chrome(options=options)
-
-
-    driver.get("https://dev.iwhalecloud.com/portal/main.html?portalId=3")
-
-    print(f"[TIME INSPECT] startup uses {time.time()-starttime} seconds")
-
-    driver.implicitly_wait(10)
-
-    print(f"[TIME INSPECT] findele starts at {time.time()-starttime} seconds")
-    name_ele = driver.find_element(By.XPATH, "//input[@name='username' and @placeholder='工号']")
-    print(f"[TIME INSPECT] findele ends at {time.time()-starttime} seconds")
-
-    print(name_ele)
-    print(name_ele.get_attribute("class"))
-
-    print(f"[TIME INSPECT] sendkeys ends at {time.time()-starttime} seconds")
-    name_ele.send_keys("0027026730")
-    print(f"[TIME INSPECT] findele starts at {time.time()-starttime} seconds")
-    password_ele = driver.find_element(by=By.NAME, value="edt_pwd")
-    print(f"[TIME INSPECT] findele ends at {time.time()-starttime} seconds")
-    password_ele.send_keys("WZH11235813hAOJ!")
-    login_ele = driver.find_element(by=By.CLASS_NAME, value="loginBtn")
-    login_ele.click()
-    ################################登录完成################################
-    time.sleep(4)
-    menu_ele = driver.find_element(by=By.XPATH, value="//span[@class='iconfont icon-menu-list portal__nav_icon js-menu']")
-    menu_ele.click()
-
-    driver.find_element(by=By.ID, value="searchMenuInput").send_keys('我的研发空间')
-    time.sleep(1)
-    specific_menu_ele = driver.find_element(by=By.XPATH, value="//dd//*[@menuname='我的研发空间']")
-    ActionChains(driver).double_click(specific_menu_ele).perform()
-    time.sleep(1)
-    #############################进入我的研发空间#############################
-
-    project_ele = driver.find_element(by=By.XPATH, value="//td[@title='TM_CD_AutoTest']")
-    ActionChains(driver).double_click(project_ele).perform()
-    time.sleep(1)
-    project_ele = driver.find_element(by=By.XPATH, value="//td[@title='TM_CD_AllCases_TMPass']")
-    ActionChains(driver).double_click(project_ele).perform()
-    time.sleep(1)
-    ###############################进入具体项目###############################
-    instance_id = []
-    is_earlier_than_startdate = False
-    triangles_eles = driver.find_elements(by=By.XPATH,value="//div[contains(@class,'treeclick')]")
-    for triangle_ele in triangles_eles:
-        triangle_ele.click()
-        time.sleep(1)
-        tr_eles = driver.find_elements(by=By.XPATH, value="//div[@class='ui-tabs-panel' and @menuid]//tr[@id and not(contains(@style, 'display: none;'))][descendant::button[contains(text(), '实例详情')]]")
-        print(len(tr_eles))
-        for tr_ele in tr_eles:
-            create_date_ele = tr_ele.find_element(by=By.XPATH, value="td[contains(@aria-describedby,'createDate')]")
-            create_date = datetime.strptime(create_date_ele.get_attribute('title'),'%Y-%m-%d %H:%M:%S')
-            print((create_date - start_date).total_seconds())
-            if (create_date - start_date).total_seconds() < 0:
-                driver.quit()
-                return instance_id
-            current_instance_id = re.search("\d{7}", tr_ele.get_attribute('id')).group()
-            # print(f"current_instance_id is {current_instance_id}")
-            instance_id.append({'create_date':create_date, 'current_instance_id':current_instance_id})
-        triangle_ele.click()
-    
-    driver.quit()
-    return instance_id
+import GetInstanceId as gid
+from visualization import by_matplotlib as matvis
 
 def get_outputxml(instance_id):
+    '''
+    拿到指定instance_id的xml
+
+    每次从尝试从同目录的文件夹xmlfiles中寻找${instance_id}.xml, 如果没有再去get, get到立刻保存到xmlfiles文件夹中
+    '''
+    # 构建本地文件路径
+    file_path = os.path.join("xmlfiles", f"{instance_id}.xml")
+    # 检查本地文件是否存在
+    try:
+        if os.path.isfile(file_path): 
+            with open(file_path, "r", encoding='UTF-8', errors='ignore') as file:
+                return file.read()
+    except Exception as e:
+        print(f"ERROR when reading local xml {instance_id}.xml")
+        raise e
+    # 如果本地文件不存在，则发送GET请求获取数据
     url = f"http://10.10.169.17:9443/cos-cloudtest/autotest/{instance_id}/report/output.xml"
     response = requests.get(url)
-    return response.text
+    # 检查请求是否成功
+    if response.status_code == 200:
+        # 将获取到的数据保存到本地文件
+        with open(file_path, "w") as file:
+            file.write(response.text)
+        return response.text
+    # 请求失败时返回空字符串或其他适当的错误处理
+    return ""
 
 def query_method_time(method:str, instance_id:str) -> list:
+    '''根据给定的单个实例，返回一组用例中某个关键字的用时列表
+    
+
+    return:
+        duration_and_starttime = [{'duration': duration, 'starttime': starttime},{},{}...]
+    '''
     xmltext = get_outputxml(instance_id)
     # print(xmltext)
     try:
@@ -98,6 +60,8 @@ def query_method_time(method:str, instance_id:str) -> list:
         print(f"xmltext is\n{xmltext}")
         return None
         # raise e
+#############################################################
+    duration_and_starttime = []
     allele = root.findall(f".//kw[@name='{method}']")
     for ele in allele:
         eles = ele.findall(f"msg[@timestamp]")
@@ -105,41 +69,59 @@ def query_method_time(method:str, instance_id:str) -> list:
         endtime = datetime.strptime(eles[1].attrib['timestamp'],'%Y%m%d %H:%M:%S.%f')
         duration = endtime-starttime
         print(f"duration is {duration}")
-        return duration
-        # 上面这个拿到的时间还是个str，还得转成date再减
+        duration_and_starttime.append({'duration': duration, 'starttime': starttime})
+    return duration_and_starttime
 
-def visualize_method_duration(method_times, method_name=None):
-    transferred_data = []
-    for raw_dict in method_times:
-        brief_create_date = int(datetime.strftime(raw_dict['create_date'],'%y%m%d'))
-        method_time = raw_dict['method_time'].total_seconds()
-        print(f"brief_create_date is  {brief_create_date}")
-        print(f"raw_dict[method_time] is  {method_time}")
-        transferred_data.append({'method_time':method_time, 'create_date':brief_create_date})
-    ready = [[x['method_time'] for x in transferred_data], [x['create_date'] for x in transferred_data]]
-    plt.scatter(ready[0], ready[1])
-    plt.show()  
-
-def save_to_csv(method_name, method_times):
+def save_method_times_to_csv(method_name, method_times):
+    '''将关键字耗时信息保存进csv中'''
     with open(f'[Time Inspect] {method_name}.csv', 'w', newline='') as csvfile:
         fieldnames = ['method_time', 'create_date']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for single_dict in method_times:
+            single_dict = single_dict.copy()
+            single_dict['method_time'] = single_dict['method_time'].total_seconds()
+            single_dict['create_date'] = datetime.strftime(single_dict['create_date'], '%Y-%m-%d %H:%M:%S.%f')
             writer.writerow(single_dict)
 
-if __name__ == '__main__':
-    method_name = 'Enter Specific Menu'
-    # 其实只会保留最近两个星期的记录
-    instance_ids = get_instance_id(datetime.strptime('2023-10-05 00:00:00','%Y-%m-%d %H:%M:%S'))
+def read_csv_to_scatter_data(method_name):
+    with open(f'[Time Inspect] {method_name}.csv', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        method_times = []
+        for row in reader:
+            current_method_time = datetime.strptime(row['method_time'], '%H:%M:%S.%f')
+            current_create_date = datetime.strptime(row['create_date'], '%Y-%m-%d %H:%M:%S.%f')
+            method_times.append({'method_time':current_method_time, 'create_date':current_create_date})
+        print(f"method_times is \n{method_times}")
+        return method_times
+
+def get_all_methods_time(instance_ids, method_name):
+    '''从给定的所有xml文件获取所有 指定关键字 的耗时
+    
+    args:
+
+    returns:
+        methods_times = [{},{},...]
+    '''
     method_times = []
     for instance_id in instance_ids:
-        method_time = query_method_time(method_name, instance_id['current_instance_id'])
-        if method_time is None:
+        duration_and_starttime = query_method_time(method_name, instance_id['current_instance_id'])
+        if duration_and_starttime is None:
             continue
-        method_times.append({'method_time':method_time, 'create_date':instance_id['create_date']})
-    # print(method_times)
-    save_to_csv(method_name, method_times)
-    visualize_method_duration(method_times, method_name)
+        for single_case in duration_and_starttime:
+            method_times.append({'method_time':single_case['duration'], 'create_date':single_case['starttime']})
+    return method_times
+
+if __name__ == '__main__':
+    method_name = 'Create Subs For OE'
+    
+    instance_ids = gid.get_instance_id(datetime.strptime('2023-10-18 00:00:00','%Y-%m-%d %H:%M:%S'))
+
+    method_times = get_all_methods_time(instance_ids, method_name)
+    
+    # save_method_times_to_csv(method_name, method_times)
+    # method_times = read_csv_to_scatter_data(method_name)
+
+    matvis.visualize_method_duration(method_times, method_name)
     
 
