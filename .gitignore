@@ -1,3 +1,5 @@
 /xmlfiles/
 *.csv
+*.xlsx
+*.drawio
 __pycache__/

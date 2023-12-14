@@ -1,4 +1,5 @@
 import requests
+import os
 
 def get_outputxml(instance_id):
     '''
