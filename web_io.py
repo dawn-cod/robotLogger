@@ -23,7 +23,7 @@ def get_outputxml(instance_id):
     # 检查请求是否成功
     if response.status_code == 200:
         # 将获取到的数据保存到本地文件
-        with open(file_path, "w") as file:
+        with open(file_path, "w", encoding="utf-8") as file:
             file.write(response.text)
         return response.text
     # 请求失败时返回空字符串或其他适当的错误处理
